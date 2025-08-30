@@ -1,0 +1,23 @@
+# Node.js
+node_modules/
+dist/
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+*.sqlite3
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# Build folders
+build/
+.next/

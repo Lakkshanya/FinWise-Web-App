@@ -2,7 +2,10 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const bodyParser = require("body-parser");
+
+// Routes
 const schemesRoutes = require("./routes/schemes");
+const extractRoutes = require("./routes/extract");
 
 const app = express();
 
@@ -10,16 +13,18 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// Connect MongoDB
+// MongoDB Connection
 mongoose.connect("mongodb://127.0.0.1:27017/gov_schemes", {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
 })
-.then(()=> console.log("MongoDB Connected"))
-.catch(err => console.log(err));
+.then(() => console.log("✅ MongoDB Connected"))
+.catch((err) => console.error("❌ MongoDB Error:", err));
 
-// Routes
-app.use("/api/schemes", schemesRoutes);
+// API Routes
+app.use("/api/schemes", schemesRoutes);   // ML prediction based on form input
+app.use("/api/extract", extractRoutes);   // Document upload and field extraction
 
-// Start server
-app.listen(5000, () => console.log("Server running on port 5000"));
+// Start Server
+const PORT = 5000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

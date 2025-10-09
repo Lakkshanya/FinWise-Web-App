@@ -12,51 +12,42 @@ CORS(app)
 # -------------------------------
 df = pd.read_csv("data/updated_schemes.csv")
 
-# Fill missing text fields
 df['eligibility'] = df['eligibility'].fillna('')
 df['benefits'] = df['benefits'].fillna('')
 df['documents'] = df['documents'].fillna('')
+df['state'] = df['state'].fillna('').str.title()
 
 # -------------------------------
-# Extract features
+# Feature extraction
 # -------------------------------
-
-# Age extraction
 def extract_age(text):
     match = re.search(r'(\d{1,2})\s*[–-]\s*(\d{1,2})', text)
     if match:
         return int(match.group(1)), int(match.group(2))
     return 0, 100
 
-df[['age_min', 'age_max']] = df['eligibility'].apply(lambda x: pd.Series(extract_age(x)))
-
-# Occupation extraction
 def extract_occupation(text):
-    occupations = ['farmer', 'worker', 'women', 'student', 'youth', 'msme']
+    occupations = ['farmer', 'worker', 'women', 'student', 'youth', 'msme', 'engineer', 'unemployed', 'self-employed']
     for occ in occupations:
         if occ.lower() in text.lower():
-            return occ
+            return occ.lower()
     return 'any'
 
-df['occupation'] = df['eligibility'].apply(extract_occupation)
-
-# Income extraction
 def extract_income(text):
     match = re.search(r'\b\d{5,9}\b', text.replace(',', ''))
     if match:
         return int(match.group(0))
-    return 10000000  # default high value
+    return 10000000
 
+df['age_min'], df['age_max'] = zip(*df['eligibility'].apply(extract_age))
+df['occupation'] = df['eligibility'].apply(extract_occupation).fillna('any').str.lower()
 df['income_max'] = df['eligibility'].apply(extract_income)
 
-# Unique states list
 states = sorted(df['state'].dropna().unique().tolist())
 
 # -------------------------------
-# Prepare features for model
+# Train ML model
 # -------------------------------
-df['occupation'] = df['occupation'].fillna('any')
-
 X = pd.get_dummies(df[['age_min', 'age_max', 'income_max', 'occupation', 'state']])
 y = df['scheme_name']
 
@@ -64,15 +55,18 @@ rf = RandomForestClassifier(n_estimators=100, random_state=42)
 rf.fit(X, y)
 
 # -------------------------------
-# Flask API for prediction
+# Prediction endpoint
 # -------------------------------
 @app.route("/predict", methods=['POST'])
 def predict_schemes():
     data = request.json
-    age = data.get("age")
-    income = data.get("income")
-    occupation = data.get("occupation", "any")
-    state = data.get("state")
+    age = int(data.get("age", 0))
+    income = int(data.get("income", 0))
+    occupation = data.get("occupation", "any").strip().lower()
+    state = data.get("state", "").strip().title()
+
+    print("Received input:", data)
+    print("Normalized input:", age, income, occupation, state)
 
     if state not in states:
         return jsonify({"message": "Invalid or unsupported state input."})
@@ -81,7 +75,6 @@ def predict_schemes():
     if eligible_df.empty:
         return jsonify({"message": "No eligible schemes found for this state."})
 
-    # Prepare input row
     input_df = pd.DataFrame([{
         'age_min': age,
         'age_max': age,
@@ -92,14 +85,16 @@ def predict_schemes():
     input_df = pd.get_dummies(input_df)
     input_df = input_df.reindex(columns=X.columns, fill_value=0)
 
-    # Predict
-    pred = rf.predict([input_df.iloc[0]])
+    pred = rf.predict_proba([input_df.iloc[0]])[0]
+    top_indices = pred.argsort()[::-1][:5]
+    top_schemes = [rf.classes_[i] for i in top_indices]
 
-    # Validate if predicted scheme belongs to selected state
-    if pred[0] not in eligible_df['scheme_name'].values:
+    matched_schemes = eligible_df[eligible_df['scheme_name'].isin(top_schemes)]
+
+    if matched_schemes.empty:
         return jsonify({"message": "No eligible schemes found for the given input."})
 
-    return jsonify({"schemes": pred.tolist()})
+    return jsonify({"schemes": matched_schemes['scheme_name'].tolist()})
 
 # -------------------------------
 if __name__ == "__main__":
